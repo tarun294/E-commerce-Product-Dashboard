@@ -1,26 +1,37 @@
-import React, { useState } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useInView } from 'react-intersection-observer';
-import { Loader2 } from 'lucide-react';
-import { ProductCard } from './components/ProductCard';
-import { ProductModal } from './components/ProductModal';
-import { Filters } from './components/Filters';
-import { useProducts } from './hooks/useProducts';
-import { Product, FilterState } from './types/product';
+import React, { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useInView } from "react-intersection-observer";
+import { Loader2 } from "lucide-react";
+import { ProductCard } from "./components/ProductCard";
+import { ProductModal } from "./components/ProductModal";
+import { Filters } from "./components/Filters";
+import { useProducts } from "./hooks/useProducts";
+import { Product, FilterState } from "./types/product";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      retry: 2,
+    },
+  },
+});
 
 function Dashboard() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [filters, setFilters] = useState<FilterState>({
-    category: '',
+    category: "",
     minPrice: 0,
     maxPrice: 0,
     minRating: 0,
-    sortBy: 'price-asc',
+    sortBy: "price-asc",
   });
 
-  const { ref, inView } = useInView();
+  const { ref, inView } = useInView({
+    threshold: 0.5,
+    delay: 100,
+  });
+
   const {
     data,
     fetchNextPage,
@@ -28,19 +39,20 @@ function Dashboard() {
     isFetchingNextPage,
     isLoading,
     isError,
+    error,
   } = useProducts(filters);
 
   React.useEffect(() => {
-    if (inView && hasNextPage) {
+    if (inView && hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
-  }, [inView, hasNextPage, fetchNextPage]);
+  }, [inView, hasNextPage, fetchNextPage, isFetchingNextPage]);
 
   const categories = React.useMemo(() => {
-    if (!data) return [];
+    if (!data?.pages[0]) return [];
     const allCategories = new Set<string>();
     data.pages.forEach((page) => {
-      page.forEach((product) => allCategories.add(product.category));
+      page.products.forEach((product) => allCategories.add(product.category));
     });
     return Array.from(allCategories);
   }, [data]);
@@ -48,7 +60,10 @@ function Dashboard() {
   if (isError) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <p className="text-red-500">Error loading products. Please try again later.</p>
+        <p className="text-red-500">
+          Error loading products:{" "}
+          {error instanceof Error ? error.message : "Please try again later."}
+        </p>
       </div>
     );
   }
@@ -57,7 +72,9 @@ function Dashboard() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-          <h1 className="text-2xl font-bold text-gray-900">Product Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Product Dashboard
+          </h1>
         </div>
       </header>
 
@@ -81,7 +98,7 @@ function Dashboard() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {data?.pages.map((page, i) => (
                     <React.Fragment key={i}>
-                      {page.map((product) => (
+                      {page.products.map((product) => (
                         <ProductCard
                           key={product.id}
                           product={product}
@@ -92,12 +109,12 @@ function Dashboard() {
                   ))}
                 </div>
 
-                <div
-                  ref={ref}
-                  className="flex justify-center mt-8"
-                >
+                <div ref={ref} className="flex justify-center mt-8 py-4">
                   {isFetchingNextPage && (
                     <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                  )}
+                  {!hasNextPage && data?.pages[0].products.length > 0 && (
+                    <p className="text-gray-500">No more products to load.</p>
                   )}
                 </div>
               </>
